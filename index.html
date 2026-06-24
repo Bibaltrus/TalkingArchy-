@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Говорящий Арчи (Talking Archy)</title>
+    <title>Talking Archy</title>
     <style>
         * {
             box-sizing: border-box;
@@ -20,7 +20,7 @@
             font-family: 'Segoe UI', Arial, sans-serif;
         }
 
-        /* Игра во весь экран */
+        /* Fullscreen game screen */
         .game-screen {
             position: relative;
             width: 100vw;
@@ -30,7 +30,7 @@
             justify-content: center;
         }
 
-        /* Картинки и видео строго на весь экран */
+        /* Media covers the entire screen */
         .media-container {
             position: absolute;
             top: 0;
@@ -43,10 +43,10 @@
         .media-container img, .media-container video {
             width: 100%;
             height: 100%;
-            object-fit: cover; /* Полное заполнение без черных полос */
+            object-fit: cover; /* Fill screen without black bars */
         }
 
-        /* Индикатор того, что Арчи слушает */
+        /* Status bar when Archy is listening */
         .status-indicator {
             position: absolute;
             top: 30px;
@@ -64,7 +64,7 @@
             display: none;
         }
 
-        /* Боковое меню с круглыми кнопками */
+        /* Right side panel for controls */
         .side-panel {
             position: absolute;
             right: 25px;
@@ -76,7 +76,7 @@
             z-index: 10;
         }
 
-        /* Круглые кнопки */
+        /* Round buttons */
         .btn-round {
             width: 70px;
             height: 70px;
@@ -101,18 +101,18 @@
             transform: scale(0.92);
         }
 
-        /* Стили кнопок */
+        /* Button Colors */
         .btn-round.call { background-color: #2ecc71; }
         .btn-round.hangup { background-color: #e74c3c; }
         .btn-round.talk { background-color: #f39c12; }
         
-        /* Пульсация кнопки записи */
+        /* Pulse animation for recording state */
         .btn-round.recording { 
             background-color: #c0392b; 
             animation: pulse 1.5s infinite;
         }
 
-        /* Анимации */
+        /* Animations */
         @keyframes pulse {
             0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.7); }
             70% { transform: scale(1.08); box-shadow: 0 0 0 15px rgba(231, 76, 60, 0); }
@@ -133,17 +133,22 @@
 <body>
 
     <div class="game-screen">
-        <div id="status-bar" class="status-indicator">🎙️ АРЧИ СЛУШАЕТ...</div>
+        <!-- Status indicator -->
+        <div id="status-bar" class="status-indicator">🎙️ ARCHY IS LISTENING...</div>
 
+        <!-- Fullscreen Media -->
         <div class="media-container">
             <img id="character-img" src="Idle.png" alt="Archy">
             <video id="character-video" class="hidden" playsinline></video>
         </div>
 
+        <!-- Controls -->
         <div class="side-panel">
-            <button id="call-btn" class="btn-round call" title="Позвонить">📞</button>
+            <!-- Call Button -->
+            <button id="call-btn" class="btn-round call" title="Call">📞</button>
             
-            <button id="talk-btn" class="btn-round talk" title="Повторять">🗣️</button>
+            <!-- Repeat/Talk Button -->
+            <button id="talk-btn" class="btn-round talk" title="Repeat">🗣️</button>
         </div>
     </div>
 
@@ -154,7 +159,7 @@
         const talkBtn = document.getElementById('talk-btn');
         const statusBar = document.getElementById('status-bar');
 
-        // Переменные состояний
+        // State variables
         let isCalling = false;
         let isRecording = false;
         
@@ -163,13 +168,12 @@
         let audioChunks = [];
         let activeAudio = null;
         
-        // Аудио-контекст для отслеживания голоса (silence detection)
+        // Audio Context for Silence Detection
         let audioContext = null;
         let analyser = null;
-        let micSource = null;
-        let speechTimeout = null;
+        let talkAnimInterval = null;
 
-        // Показ картинки
+        // Show Image Function
         function showImage(src) {
             charVideo.classList.add('hidden');
             charVideo.pause();
@@ -177,46 +181,55 @@
             charImg.classList.remove('hidden');
         }
 
-        // Запуск видео
+        // Play Video Function
         function playVideo(src, onEndCallback) {
             charImg.classList.add('hidden');
             charVideo.src = src;
             charVideo.classList.remove('hidden');
             charVideo.load();
-            charVideo.play().catch(err => console.log("Автоплей заблокирован:", err));
+            charVideo.play().catch(err => console.log("Autoplay blocked:", err));
             charVideo.onended = onEndCallback;
         }
 
-        // Функция для принудительного запроса микрофона в Chrome
+        // Initialize Microphone properly for Chrome
         async function initMicrophone() {
             if (globalStream) return globalStream;
             
-            // Обязательная проверка на безопасность протокола (Chrome блокирует file://)
+            // Check for secure protocol (Chrome requires HTTPS or localhost for Mic)
             if (location.protocol === 'file:') {
-                alert("Внимание! Chrome блокирует микрофон для локальных файлов. Пожалуйста, загрузите проект на Tiiny Host (через HTTPS) или используйте локальный сервер (localhost).");
+                alert("Warning! Chrome blocks microphone access for local files. Please upload the project to a web host (HTTPS) or use a local server.");
             }
 
             try {
-                // Прямой вызов окна разрешения Chrome
+                // Request Mic access
                 globalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 return globalStream;
             } catch (err) {
-                alert("Арчи не может получить доступ к микрофону. Убедитесь, что вы дали разрешение сайту в настройках Chrome (иконка замка в адресной строке).");
+                alert("Archy cannot access the microphone. Please grant permission in your browser settings.");
                 console.error(err);
                 throw err;
             }
         }
 
-        /* --- ЛОГИКА ЗВОНКА (Автоматическое прослушивание и рандом) --- */
+        // Cleanup audio context function
+        function stopAudioContext() {
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+        }
+
+        /* =======================================
+           CALL LOGIC (Auto-listen & Random Yes/No)
+        ======================================== */
         callBtn.addEventListener('click', async () => {
-            // Инициализируем аудио при первом же клике (требование Chrome безопасности)
             try { await initMicrophone(); } catch(e) { return; }
 
             if (!isCalling) {
                 isCalling = true;
                 callBtn.innerHTML = '❌';
                 callBtn.className = 'btn-round hangup';
-                talkBtn.classList.add('hidden'); // Прячем кнопку повторения
+                talkBtn.classList.add('hidden'); // Hide talk button during call
 
                 playVideo('Call.mp4', () => {
                     if (isCalling) {
@@ -230,12 +243,11 @@
 
         function startCallListening() {
             showImage('Callidle.jpg');
-            statusBar.style.display = 'block'; // Показываем надпись "Арчи слушает"
+            statusBar.style.display = 'block';
             
-            // Настраиваем отслеживание голоса
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioContext.createAnalyser();
-            micSource = audioContext.createMediaStreamSource(globalStream);
+            const micSource = audioContext.createMediaStreamSource(globalStream);
             micSource.connect(analyser);
             analyser.fftSize = 256;
             
@@ -246,56 +258,38 @@
             let silenceStartTime = Date.now();
             
             function checkVoice() {
-                if (!isCalling || charImg.src.indexOf('Callidle.jpg') === -1) {
-                    // Останавливаем проверку, если сбросили или началось видео
-                    return;
-                }
+                if (!isCalling || charImg.src.indexOf('Callidle.jpg') === -1) return;
                 
                 analyser.getByteFrequencyData(dataArray);
                 
-                // Считаем среднюю громкость звука в микрофоне
                 let totalVolume = 0;
-                for (let i = 0; i < bufferLength; i++) {
-                    totalVolume += dataArray[i];
-                }
+                for (let i = 0; i < bufferLength; i++) { totalVolume += dataArray[i]; }
                 let averageVolume = totalVolume / bufferLength;
                 
-                // Порог чувствительности (15 — оптимально для разговора)
+                // Sensitivity threshold
                 if (averageVolume > 15) {
-                    if (!hasSpoken) {
-                        hasSpoken = true;
-                    }
-                    silenceStartTime = Date.now(); // Сбрасываем таймер тишины, пока игрок говорит
+                    if (!hasSpoken) hasSpoken = true;
+                    silenceStartTime = Date.now(); // Reset silence timer while talking
                 } else {
-                    // Если игрок что-то сказал, а теперь замолчал более чем на 1.2 секунды:
+                    // Trigger after 1.2 seconds of silence
                     if (hasSpoken && (Date.now() - silenceStartTime > 1200)) {
                         statusBar.style.display = 'none';
                         stopAudioContext();
                         
-                        // Рандомный выбор ответа Арчи
+                        // Randomly choose Yes or No
                         const randomAnswer = Math.random() > 0.5 ? 'Yes.mp4' : 'No.mp4';
                         
                         playVideo(randomAnswer, () => {
                             if (isCalling) {
-                                // После ответа Арчи снова начинает слушать
-                                startCallListening();
+                                startCallListening(); // Listen again after answer
                             }
                         });
                         return;
                     }
                 }
-                
                 requestAnimationFrame(checkVoice);
             }
-            
             requestAnimationFrame(checkVoice);
-        }
-
-        function stopAudioContext() {
-            if (audioContext) {
-                audioContext.close();
-                audioContext = null;
-            }
         }
 
         function endCall() {
@@ -309,66 +303,119 @@
         }
 
 
-        /* --- ЛОГИКА ПОВТОРЕНИЯ (Запись голоса -> Воспроизведение под Talking.png) --- */
+        /* =======================================
+           REPEAT LOGIC (Record -> Auto-Silence -> Animate)
+        ======================================== */
         talkBtn.addEventListener('click', async () => {
             try { await initMicrophone(); } catch(e) { return; }
 
             if (!isRecording) {
-                if (activeAudio) { activeAudio.pause(); }
+                if (activeAudio) activeAudio.pause();
 
+                isRecording = true;
+                talkBtn.innerHTML = '🛑'; 
+                talkBtn.classList.add('recording');
+                callBtn.classList.add('hidden'); // Hide call button
+                statusBar.style.display = 'block'; // Show "LISTENING"
+
+                // Setup MediaRecorder
                 mediaRecorder = new MediaRecorder(globalStream);
                 audioChunks = [];
 
-                mediaRecorder.ondataavailable = (event) => {
-                    audioChunks.push(event.data);
-                };
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
 
+                // Playback logic when recording stops
                 mediaRecorder.onstop = () => {
                     const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
                     const audioUrl = URL.createObjectURL(audioBlob);
                     activeAudio = new Audio(audioUrl);
 
-                    // Когда Арчи воспроизводит ваш голос назад
+                    // Start mouth animation (switching Idle/Talking)
                     activeAudio.onplay = () => {
-                        showImage('Talking.png'); // Включаем говорящую картинку
-                        talkBtn.classList.add('hidden'); // Прячем кнопки управления
-                        callBtn.classList.add('hidden');
+                        let isMouthOpen = true;
+                        showImage('Talking.png'); // initial frame
+                        
+                        // Alternate images every 150ms for realistic talking effect
+                        talkAnimInterval = setInterval(() => {
+                            isMouthOpen = !isMouthOpen;
+                            showImage(isMouthOpen ? 'Talking.png' : 'Idle.png');
+                        }, 150);
                     };
 
-                    // Когда закончил говорить
+                    // End of playback
                     activeAudio.onended = () => {
-                        showImage('Idle.png'); // Возвращаем покой
-                        talkBtn.classList.remove('hidden');
+                        clearInterval(talkAnimInterval);
+                        
+                        // Reset UI entirely back to wait mode
+                        isRecording = false;
+                        talkBtn.innerHTML = '🗣️';
+                        talkBtn.classList.remove('recording');
                         callBtn.classList.remove('hidden');
+                        showImage('Idle.png');
                     };
 
                     activeAudio.play().catch(e => {
-                        console.log(e);
-                        showImage('Idle.png');
-                        talkBtn.classList.remove('hidden');
+                        console.error(e);
+                        clearInterval(talkAnimInterval);
+                        isRecording = false;
+                        talkBtn.innerHTML = '🗣️';
+                        talkBtn.classList.remove('recording');
                         callBtn.classList.remove('hidden');
+                        showImage('Idle.png');
                     });
                 };
 
                 mediaRecorder.start();
-                isRecording = true;
-                talkBtn.innerHTML = '🛑'; 
-                talkBtn.classList.add('recording');
-                callBtn.classList.add('hidden'); // Прячем звонок на время записи фраз
-                statusBar.style.display = 'block';
+
+                // Setup Silence Detection for Repeat Mode
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                const micSource = audioContext.createMediaStreamSource(globalStream);
+                micSource.connect(analyser);
+                analyser.fftSize = 256;
+
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                let hasSpoken = false;
+                let silenceStartTime = Date.now();
+
+                function checkRepeatVoice() {
+                    if (!isRecording) return; // Stop if manually interrupted
+
+                    analyser.getByteFrequencyData(dataArray);
+                    
+                    let totalVolume = 0;
+                    for (let i = 0; i < bufferLength; i++) { totalVolume += dataArray[i]; }
+                    let averageVolume = totalVolume / bufferLength;
+
+                    if (averageVolume > 15) {
+                        if (!hasSpoken) hasSpoken = true;
+                        silenceStartTime = Date.now();
+                    } else {
+                        // If user spoke and was silent for 1.2s -> Auto Stop
+                        if (hasSpoken && (Date.now() - silenceStartTime > 1200)) {
+                            statusBar.style.display = 'none';
+                            stopAudioContext();
+                            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                                mediaRecorder.stop(); // Triggers playback
+                            }
+                            return;
+                        }
+                    }
+                    requestAnimationFrame(checkRepeatVoice);
+                }
+                requestAnimationFrame(checkRepeatVoice);
 
             } else {
-                // Нажатие на кнопку Стоп
-                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                    mediaRecorder.stop();
-                }
-                isRecording = false;
-                talkBtn.innerHTML = '🗣️';
-                talkBtn.classList.remove('recording');
+                // Manual Stop Button Clicked
                 statusBar.style.display = 'none';
+                stopAudioContext();
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                    mediaRecorder.stop(); // This stops recording and plays whatever was recorded immediately
+                }
             }
         });
     </script>
 </body>
 </html>
-
